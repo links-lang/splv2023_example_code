@@ -1,0 +1,16 @@
+fun createPage(greeting) {
+  page
+    <html>
+      <title>A very simple page</title>
+      <body>
+        Welcome to {greeting}
+      </body>
+    </html>
+}
+
+fun main() {
+  addRoute("", fun(_) {createPage(<b>SPLV</b>)});
+  servePages()
+}
+
+main()

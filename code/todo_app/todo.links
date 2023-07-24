@@ -1,0 +1,354 @@
+open import Mvu;
+open import MvuHTML;
+open import MvuAttrs;
+open import MvuEvents;
+
+# No explicit representation of state, direct DOM manipulation only
+module Version1 {
+
+  sig addTaskToDom : (String) ~> ()
+  fun addTaskToDom(task) client {
+    var t = getNodeById("table");
+    var new_row =
+        <tr><td>{stringToXml(task)}</td></tr>;
+    appendChildren(new_row, t)
+  }
+
+  fun createPage() {
+    page
+     <html>
+      <body>
+       <form l:onsubmit="{addTaskToDom(task)}">
+         <input l:name="task"/>
+         <button type="submit">Add task</button>
+       </form>
+       <table id="table"></table>
+       </body>
+     </html>
+  }
+}
+
+# Client side rendering, but with more explicit state
+module Version2 {
+
+  sig makeTaskTable : ([String]) -> (Xml)
+  fun makeTaskTable(tasks) {
+    <table id="table">
+      {for (task <- tasks) <tr><td>{stringToXml(task)}</td></tr>}
+    </table>
+  }
+
+mutual {
+
+  fun redraw(tasks) {
+    var old_body = getNodeById("body");
+    var new_body = makeBody(tasks);
+    replaceNode(new_body,old_body)
+  }
+
+  fun addTask(tasks, desc) client {
+    var new_tasks = tasks ++ [desc];
+    redraw(new_tasks)
+  }
+
+  fun makeBody(tasks) {
+      <body id="body">
+       <form id="form" l:onsubmit="{addTask(tasks, task)}">
+         <input l:name="task"/>
+         <button type="submit">Add task</button>
+       </form>
+       {makeTaskTable(tasks)}
+       </body>
+  }
+}
+
+  fun createPage() {
+    page
+     <html>
+       <body>
+         {makeBody([])}
+       </body>
+     </html>
+  }
+}
+
+# Like previous, but with IDs
+module Version3 {
+
+  typename Task = (id: Int, desc: String);
+  typename State = [Task];
+
+  fun maxId(tasks) {
+    switch(tasks) {
+      case [] -> -1
+      case task :: xs -> maximum(task.id, maxId(xs))
+    }
+  }
+
+
+
+mutual {
+
+  fun redraw(tasks) {
+    var old_body = getNodeById("body");
+    var new_body = makeBody(tasks);
+    replaceNode(new_body,old_body)
+  }
+
+
+  # unchanged
+  fun makeTaskTable(tasks) {
+    <table id="table">
+      {for (task <- tasks)
+        <tr><td>{stringToXml(task.desc)}</td></tr>}
+    </table>
+  }
+
+  fun addTask(tasks, desc) client {
+    var id = maxId(tasks) + 1;
+    var new_task = (id=id, desc=desc);
+    var new_tasks = tasks ++ [new_task];
+    redraw(new_tasks)
+  }
+
+  fun makeBody(tasks) {
+      <body id="body">
+       <form id="form" l:onsubmit="{addTask(tasks, desc)}">
+         <input l:name="desc"/>
+         <button type="submit">Add task</button>
+       </form>
+       {makeTaskTable(tasks)}
+       </body>
+  }
+}
+
+  fun createPage() {
+    page
+     <html>
+       <body>
+         {makeBody([])}
+       </body>
+     </html>
+  }
+}
+
+# Like previous, but with ids and deletion
+module Version4 {
+
+  typename Task = (id: Int, desc: String);
+  typename State = [Task];
+
+  fun maxId(tasks) {
+    switch(tasks) {
+      case [] -> -1
+      case task :: xs -> maximum(task.id, maxId(xs))
+    }
+  }
+
+
+
+mutual {
+
+  fun redraw(tasks) {
+    var old_body = getNodeById("body");
+    var new_body = makeBody(tasks);
+    replaceNode(new_body,old_body)
+  }
+
+  fun deleteTask(tasks, delete_id) {
+    var new_tasks = filter(fun(t) {t.id <> delete_id}, tasks);
+    redraw(new_tasks)
+  }
+
+  fun makeTaskTable(tasks) {
+    <table id="table">
+      {for (task <- tasks)
+        <tr>
+          <td>{stringToXml(task.desc)}</td>
+          <td><button l:onclick="{deleteTask(tasks, task.id)}" type="submit">delete</button></td>
+        </tr>}
+    </table>
+  }
+
+  fun addTask(tasks, desc) client {
+    var id = maxId(tasks) + 1;
+    var new_task = (id=id, desc=desc);
+    var new_tasks = tasks ++ [new_task];
+    redraw(new_tasks)
+  }
+
+  fun makeBody(tasks) {
+      <body id="body">
+       <form id="form" l:onsubmit="{addTask(tasks, desc)}">
+         <input l:name="desc"/>
+         <button type="submit">Add task</button>
+       </form>
+       {makeTaskTable(tasks)}
+       </body>
+  }
+}
+
+  fun createPage() {
+    page
+     <html>
+       <body>
+         {makeBody([])}
+       </body>
+     </html>
+  }
+}
+
+
+# Like previous, but with database integration
+module Version5 {
+
+  var db = database "tasks.db";
+  var tasks_db = table "tasks" with (id : Int, desc : String) from db;
+
+  typename Task = (id: Int, desc: String);
+  typename State = [Task];
+
+  fun maxId(tasks) {
+    switch(tasks) {
+      case [] -> -1
+      case task :: xs -> maximum(task.id, maxId(xs))
+    }
+  }
+
+
+mutual {
+
+  fun redraw(tasks) client {
+    var old_body = getNodeById("body");
+    var new_body = makeBody(tasks);
+    replaceNode(new_body,old_body)
+  }
+
+  fun deleteTask(tasks, delete_id) server {
+    var new_tasks = filter(fun(t) {t.id <> delete_id}, tasks);
+    delete (t <-- tasks_db) where (t.id == delete_id);
+    redraw(new_tasks)
+  }
+
+  fun makeTaskTable(tasks) {
+    <table id="table">
+      {for (task <- tasks)
+        <tr>
+          <td>{stringToXml(task.desc)}</td>
+          <td><button l:onclick="{deleteTask(tasks, task.id)}" type="submit">delete</button></td>
+        </tr>}
+    </table>
+  }
+
+  # This must be a server function now!
+  fun addTask(tasks, desc) server {
+    var id = maxId(tasks) + 1;
+    var new_task = (id=id, desc=desc);
+    insert (tasks_db) values [(id=new_task.id, desc=new_task.desc)];
+    var new_tasks = tasks ++ [new_task];
+    redraw(new_tasks)
+  }
+
+  fun makeBody(tasks) {
+      <body id="body">
+       <form id="form" l:onsubmit="{addTask(tasks, desc)}">
+         <input l:name="desc"/>
+         <button type="submit">Add task</button>
+       </form>
+       {makeTaskTable(tasks)}
+       </body>
+  }
+}
+
+  fun loadTasks() {
+    query {for (task <-- tasks_db) {[task]} }
+  }
+
+
+  fun createPage(tasks) {
+    page
+     <html>
+       <body>
+         {makeBody(tasks)}
+       </body>
+     </html>
+  }
+}
+
+
+
+# MVU, but no side effects/database integration
+module VersionMVU {
+  typename Task = (desc: String);
+  typename Model = (descField: String, tasks: [Task]);
+
+  # Helper functions
+  fun ca(xs) { MvuAttrs.concat(xs) }
+  fun ch(xs) { MvuHTML.concat(xs) }
+  var noAttrs = MvuAttrs.empty;
+  var noChildren = MvuHTML.empty;
+
+
+  fun view(model) {
+    fun addItemHandler() {
+      onClick(fun() { AddItem })
+    }
+    fun updateFieldHandler() {
+      onInput(fun (str) { UpdateField(str) })
+    }
+    fun taskToTr(task) {
+      tr(noAttrs,
+        td(noAttrs,textNode(task.desc)))
+    }
+    var elements = MvuHTML.concatMap(taskToTr, model.tasks);
+    div(noAttrs,
+      input(updateFieldHandler(), noChildren) +*
+      button(addItemHandler(), noChildren) +*
+      MvuHTML.table_(noAttrs,
+        elements))
+  }
+
+  fun updt(msg, model) {
+    switch (msg) {
+      case AddItem -> {
+        var newTask = (desc=model.descField);
+        (model with tasks = model.tasks ++ [newTask])
+      }
+      case UpdateField(str) -> {
+        (model with descField = str)
+     }
+    }
+  }
+
+  fun createPage() {
+    var initialModel = (descField="", tasks = []);
+    runSimple("placeholder", initialModel, view, updt);
+    page
+     <html>
+    <head>
+      <title>Links - TodoMVC</title>
+    </head>
+
+    <body>
+      <div id="placeholder"></div>
+    </body>
+  </html>
+  }
+
+
+
+}
+
+
+fun main() {
+  var initial_tasks = Version5.loadTasks();
+  addRoute("/version1.links", fun(_) {Version1.createPage()});
+  addRoute("/version2.links", fun(_) {Version2.createPage()});
+  addRoute("/version3.links", fun(_) {Version3.createPage()});
+  addRoute("/version4.links", fun(_) {Version4.createPage()});
+  addRoute("/version5.links", fun(_) {Version5.createPage(initial_tasks)});
+  addRoute("/versionMVU.links", fun(_) {VersionMVU.createPage()});
+  servePages()
+}
+
+main()
